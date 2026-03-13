@@ -1,0 +1,103 @@
+export interface Env {
+	RESEND_API_KEY: string;
+	PCO_WEBHOOK_SECRET_CREATE: string;
+	PCO_WEBHOOK_SECRET_UPDATE: string;
+}
+
+interface PlanItem {
+	type: string;
+	attributes: {
+		title: string;
+		item_type: string;
+		song_id?: string;
+		service_position?: string;
+		length?: number;
+		action?: string;
+	};
+}
+
+interface PCOPayload {
+	data: PlanItem[];
+}
+
+async function verifySignature(request: Request, secret: string): Promise<{ valid: boolean; body: string }> {
+	const body = await request.text();
+	const signature = request.headers.get('X-PCO-Webhook-Secret');
+
+	const encoder = new TextEncoder();
+	const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+
+	const signatureBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(body));
+	const digest = Array.from(new Uint8Array(signatureBuffer))
+		.map((b) => b.toString(16).padStart(2, '0'))
+		.join('');
+
+	return { valid: digest === signature, body };
+}
+
+function formatEmail(songs: PlanItem[], action: string): { subject: string; text: string } {
+	const verb = action === 'updated' ? 'updated in' : 'added to';
+	const songList = songs.map((s, i) => `  ${i + 1}. ${s.attributes.title}`).join('\n');
+
+	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
+
+	const text = `
+Hey Vinnie Boi!
+
+The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:
+
+${songList}
+
+View your plan at: https://services.planningcenteronline.com
+
+—Planning Center Notifier
+  `.trim();
+
+	return { subject, text };
+}
+
+export default {
+	async fetch(request: Request, env: Env): Promise<Response> {
+		if (request.method !== 'POST') {
+			return new Response('Not found', { status: 404 });
+		}
+
+		const { valid: validCreated, body } = await verifySignature(request.clone(), env.PCO_WEBHOOK_SECRET_CREATE);
+		const { valid: validUpdated, body: body2 } = await verifySignature(request, env.PCO_WEBHOOK_SECRET_UPDATE);
+
+		if (!validCreated && !validUpdated) {
+			return new Response('Unauthorized', { status: 401 });
+		}
+
+		const finalBody = validCreated ? body : body2;
+		const payload: PCOPayload = JSON.parse(finalBody);
+
+		const songs = payload.data.filter((item) => item.attributes.item_type === 'song');
+
+		if (songs.length === 0) {
+			return new Response('OK', { status: 200 });
+		}
+
+		const action = payload.data[0]?.attributes?.action ?? 'created';
+		const { subject, text } = formatEmail(songs, action);
+
+		const resendResponse = await fetch('https://api.resend.com/emails', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${env.RESEND_API_KEY}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				from: 'onboarding@resend.dev',
+				to: 'vkscoma@gmail.com',
+				subject,
+				text,
+			}),
+		});
+
+		const _resendData = await resendResponse.json();
+		//console.log('Resend response:', JSON.stringify(_resendData));
+
+		return new Response('OK', { status: 200 });
+	},
+};
