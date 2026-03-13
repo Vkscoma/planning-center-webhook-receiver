@@ -1,4 +1,4 @@
-# planning-center-notifier
+# Planning Center Notifier
 
 A lightweight serverless webhook listener that sends you an email whenever songs are added or updated in your Planning Center Services plan.
 
