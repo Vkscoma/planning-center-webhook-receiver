@@ -45,13 +45,13 @@ async function verifySignature(request: Request, secret: string): Promise<{ vali
 	return { valid: digest === signature, body };
 }
 
-function formatEmail(songs: PlanItem[], action: string): { subject: string; text: string } {
+function formatEmail(songs: PlanItem[], action: string): { subject: string; emailTemplate: string } {
 	const verb = action === 'updated' ? 'updated in' : 'added to';
 	const songList = songs.map((s, i) => `  ${i + 1}. ${s.attributes.title}`).join('\n');
 
 	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
 
-	const text = `
+	const emailTemplate = `
 Hey Vinnie Boi!
 
 The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:
@@ -63,7 +63,7 @@ View your plan at: https://services.planningcenteronline.com
 —Planning Center Notifier
   `.trim();
 
-	return { subject, text };
+	return { subject, emailTemplate };
 }
 
 export default {
@@ -92,7 +92,7 @@ export default {
 		}
 
 		const action = outer.data[0]?.attributes?.name?.includes('updated') ? 'updated' : 'created';
-		const { subject, text } = formatEmail(songs, action);
+		const { subject, emailTemplate } = formatEmail(songs, action);
 
 		const resendResponse = await fetch('https://api.resend.com/emails', {
 			method: 'POST',
@@ -104,7 +104,7 @@ export default {
 				from: 'onboarding@resend.dev',
 				to: 'vkscoma@gmail.com',
 				subject,
-				text,
+				emailTemplate,
 			}),
 		});
 
