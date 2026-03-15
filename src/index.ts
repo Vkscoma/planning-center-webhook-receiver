@@ -52,16 +52,16 @@ function formatEmail(songs: PlanItem[], action: string): { subject: string; emai
 	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
 
 	const emailTemplate = `
-Hey Vinnie Boi!
-
-The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:
-
-${songList}
-
-View your plan at: https://services.planningcenteronline.com
-
-—Planning Center Notifier
-  `.trim();
+	<h2>>Hey Vinnie Boi!</h2>
+	
+	<p>The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:</p>
+	
+	<ol>${songList}</ol>
+	
+	<p>View your plan at: <a href="https://services.planningcenteronline.com/schedule">Planning Center Online</a></p>
+	
+	<p>—Planning Center Notifier</p>
+	`.trim();
 
 	return { subject, emailTemplate };
 }
@@ -104,7 +104,7 @@ export default {
 				from: 'onboarding@resend.dev',
 				to: 'vkscoma@gmail.com',
 				subject,
-				emailTemplate,
+				html: emailTemplate,
 			}),
 		});
 
