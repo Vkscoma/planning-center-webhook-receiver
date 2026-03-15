@@ -105,7 +105,7 @@ function formatEmail(songs: PlanItem[], action: string): { subject: string; emai
                           <td>
                             <a
                               href="https://services.planningcenteronline.com/schedule"
-                              style="line-height:100%;text-decoration:none;display:block;max-width:100%;mso-padding-alt:0px;background-color: #019AA5;border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
+                              style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color: #019AA5;border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
                               target="_blank"
                               ><span
                                 ><!--[if mso]><i style="mso-font-width:300%;mso-text-raise:18" hidden>&#8202;&#8202;</i><![endif]--></span
