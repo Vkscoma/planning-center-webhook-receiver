@@ -16,13 +16,23 @@ interface PlanItem {
 	};
 }
 
+interface OuterAttributes {
+	name: string;
+	attempt: number;
+	payload: string;
+}
+
 interface PCOPayload {
-	data: PlanItem[];
+	data: {
+		id: string;
+		type: string;
+		attributes: OuterAttributes;
+	}[];
 }
 
 async function verifySignature(request: Request, secret: string): Promise<{ valid: boolean; body: string }> {
 	const body = await request.text();
-	const signature = request.headers.get('X-PCO-Webhook-Secret');
+	const signature = request.headers.get('X-PCO-Webhooks-Authenticity');
 
 	const encoder = new TextEncoder();
 	const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -70,15 +80,18 @@ export default {
 		}
 
 		const finalBody = validCreated ? body : body2;
-		const payload: PCOPayload = JSON.parse(finalBody);
+		const outer: PCOPayload = JSON.parse(finalBody);
 
-		const songs = payload.data.filter((item) => item.attributes.item_type === 'song');
+		const innerPayload = JSON.parse(outer.data[0].attributes.payload ?? '{}');
+		const item = innerPayload.data;
+
+		const songs = item && item.attributes.item_type === 'song' ? [item] : [];
 
 		if (songs.length === 0) {
 			return new Response('OK', { status: 200 });
 		}
 
-		const action = payload.data[0]?.attributes?.action ?? 'created';
+		const action = outer.data[0]?.attributes?.name?.includes('updated') ? 'updated' : 'created';
 		const { subject, text } = formatEmail(songs, action);
 
 		const resendResponse = await fetch('https://api.resend.com/emails', {
