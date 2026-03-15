@@ -11,6 +11,7 @@ interface PlanItem {
 		item_type: string;
 		song_id?: string;
 		service_position?: string;
+		key_name: string;
 		length?: number;
 		action?: string;
 	};
