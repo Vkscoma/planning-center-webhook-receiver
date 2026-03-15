@@ -51,18 +51,6 @@ function formatEmail(songs: PlanItem[], action: string): { subject: string; emai
 
 	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
 
-	// const oldEmailTemplate = `
-	// <h2>Hey Vinnie Boi!</h2>
-
-	// <p>The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:</p>
-
-	// <ol>${songList}</ol>
-
-	// <p>View your plan at: <a href="https://services.planningcenteronline.com/schedule">Planning Center Online</a></p>
-
-	// <p>—Planning Center Notifier</p>
-	// `.trim();
-
 	const emailTemplate = `
 	<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html dir="ltr" lang="en">
@@ -117,7 +105,7 @@ function formatEmail(songs: PlanItem[], action: string): { subject: string; emai
                           <td>
                             <a
                               href="https://services.planningcenteronline.com/schedule"
-                              style="line-height:100%;text-decoration:none;display:block;max-width:100%;mso-padding-alt:0px;background-color:rgb(95,81,232);border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
+                              style="line-height:100%;text-decoration:none;display:block;max-width:100%;mso-padding-alt:0px;background-color: #019AA5;border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
                               target="_blank"
                               ><span
                                 ><!--[if mso]><i style="mso-font-width:300%;mso-text-raise:18" hidden>&#8202;&#8202;</i><![endif]--></span
