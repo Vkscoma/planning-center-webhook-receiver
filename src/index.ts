@@ -14,6 +14,13 @@ interface PlanItem {
 		length?: number;
 		action?: string;
 	};
+	relationships: {
+		plan: {
+			data: {
+				id: string;
+			};
+		};
+	};
 }
 
 interface OuterAttributes {
@@ -45,7 +52,7 @@ async function verifySignature(request: Request, secret: string): Promise<{ vali
 	return { valid: digest === signature, body };
 }
 
-function formatEmail(songs: PlanItem[], action: string): { subject: string; emailTemplate: string } {
+function formatEmail(songs: PlanItem[], planId: string, action: string): { subject: string; emailTemplate: string } {
 	const verb = action === 'updated' ? 'updated in' : 'added to';
 	const songList = songs.map((s) => `<li>${s.attributes.title}</li>`).join('');
 
@@ -104,7 +111,7 @@ function formatEmail(songs: PlanItem[], action: string): { subject: string; emai
                         <tr>
                           <td>
                             <a
-                              href="https://services.planningcenteronline.com/schedule"
+                              href="https://services.planningcenteronline.com/plans/${planId}"
                               style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color: #019AA5;border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
                               target="_blank"
                               ><span
@@ -160,6 +167,7 @@ export default {
 
 		const innerPayload = JSON.parse(outer.data[0].attributes.payload ?? '{}');
 		const item = innerPayload.data;
+		const planId = item?.relationships?.plan?.data?.id ?? '';
 
 		const songs = item && item.attributes.item_type === 'song' ? [item] : [];
 
@@ -168,7 +176,7 @@ export default {
 		}
 
 		const action = outer.data[0]?.attributes?.name?.includes('updated') ? 'updated' : 'created';
-		const { subject, emailTemplate } = formatEmail(songs, action);
+		const { subject, emailTemplate } = formatEmail(songs, planId, action);
 
 		const resendResponse = await fetch('https://api.resend.com/emails', {
 			method: 'POST',
