@@ -47,21 +47,109 @@ async function verifySignature(request: Request, secret: string): Promise<{ vali
 
 function formatEmail(songs: PlanItem[], action: string): { subject: string; emailTemplate: string } {
 	const verb = action === 'updated' ? 'updated in' : 'added to';
-	const songList = songs.map((s, i) => `  ${i + 1}. ${s.attributes.title}`).join('\n');
+	const songList = songs.map((s) => `<li>${s.attributes.title}</li>`).join('');
 
 	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
 
+	// const oldEmailTemplate = `
+	// <h2>Hey Vinnie Boi!</h2>
+
+	// <p>The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:</p>
+
+	// <ol>${songList}</ol>
+
+	// <p>View your plan at: <a href="https://services.planningcenteronline.com/schedule">Planning Center Online</a></p>
+
+	// <p>—Planning Center Notifier</p>
+	// `.trim();
+
 	const emailTemplate = `
-	<h2>>Hey Vinnie Boi!</h2>
-	
-	<p>The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:</p>
-	
-	<ol>${songList}</ol>
-	
-	<p>View your plan at: <a href="https://services.planningcenteronline.com/schedule">Planning Center Online</a></p>
-	
-	<p>—Planning Center Notifier</p>
-	`.trim();
+	<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+    <!--$-->
+  </head>
+  <body style="background-color:rgb(255,255,255)">
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            style="background-color:rgb(255,255,255);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="max-width:37.5em;margin-right:auto;margin-left:auto;padding-bottom:48px;padding-top:20px">
+              <tbody>
+                <tr style="width:100%">
+                  <td>
+                    <p
+                      style="font-size:16px;line-height:26px;margin-top:16px;margin-bottom:16px">
+                      Hi
+                      <!-- -->Vincent<!-- -->,
+                    </p>
+                    <p
+                      style="font-size:16px;line-height:26px;margin-top:16px;margin-bottom:16px">
+                      The following song${songs.length > 1 ? 's have' : ' has'} been ${verb} your Planning Center plan:
+                    </p>
+					<ol>${songList}</ol>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="text-align:center">
+                      <tbody>
+                        <tr>
+                          <td>
+                            <a
+                              href="https://services.planningcenteronline.com/schedule"
+                              style="line-height:100%;text-decoration:none;display:block;max-width:100%;mso-padding-alt:0px;background-color:rgb(95,81,232);border-radius:3px;color:rgb(255,255,255);font-size:16px;text-decoration-line:none;text-align:center;padding:12px;padding-top:12px;padding-right:12px;padding-bottom:12px;padding-left:12px"
+                              target="_blank"
+                              ><span
+                                ><!--[if mso]><i style="mso-font-width:300%;mso-text-raise:18" hidden>&#8202;&#8202;</i><![endif]--></span
+                              ><span
+                                style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:9px"
+                                >Go to Planning Center</span
+                              ><span
+                                ><!--[if mso]><i style="mso-font-width:300%" hidden>&#8202;&#8202;&#8203;</i><![endif]--></span
+                              ></a
+                            >
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p
+                      style="font-size:16px;line-height:26px;margin-top:16px;margin-bottom:16px">
+                      Best,<br />Planning Center Notifier
+                    </p>
+                    <hr
+                      style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:rgb(204,204,204);margin-bottom:20px;margin-top:20px" />                
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+	`;
 
 	return { subject, emailTemplate };
 }
