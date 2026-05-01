@@ -1,7 +1,10 @@
+import { DurableObject } from 'cloudflare:workers';
+
 export interface Env {
 	RESEND_API_KEY: string;
 	PCO_WEBHOOK_SECRET_CREATE: string;
 	PCO_WEBHOOK_SECRET_UPDATE: string;
+	PLAN_NOTIFIER: DurableObjectNamespace<PlanNotifier>;
 }
 
 interface PlanItem {
@@ -36,6 +39,74 @@ interface PCOPayload {
 		type: string;
 		attributes: OuterAttributes;
 	}[];
+}
+
+// How long to wait after the last song event before sending the email.
+// Resets each time a new song arrives for the same plan+action.
+const DEBOUNCE_MS = 30_000; // 30 seconds
+
+export class PlanNotifier extends DurableObject<Env> {
+	/**
+	 * Called by the fetch Worker for each incoming song event.
+	 * Accumulates songs in storage and resets the debounce alarm.
+	 */
+	async addSong(song: PlanItem, action: string, planId: string): Promise<void> {
+		// Key by song_id when available, otherwise fall back to title.
+		// This naturally de-duplicates if the same song fires multiple events.
+		const songKey = `song:${song.attributes.song_id ?? song.attributes.title}`;
+		await this.ctx.storage.put(songKey, song);
+
+		// Persist action and planId so the alarm handler can read them
+		await this.ctx.storage.put('meta:action', action);
+		await this.ctx.storage.put('meta:planId', planId);
+
+		// Debounce: reset the alarm to 30s from now every time a song arrives.
+		// setAlarm() overrides any previously scheduled alarm.
+		await this.ctx.storage.setAlarm(Date.now() + DEBOUNCE_MS);
+	}
+
+	/**
+	 * Called by the Cloudflare runtime when the debounce alarm fires.
+	 * Reads all accumulated songs, sends one consolidated email, then clears storage.
+	 */
+	async alarm(): Promise<void> {
+		const allEntries = await this.ctx.storage.list<PlanItem | string>();
+
+		const songs: PlanItem[] = [];
+		let action = 'created';
+		let planId = '';
+
+		for (const [key, value] of allEntries) {
+			if (key.startsWith('song:')) {
+				songs.push(value as PlanItem);
+			} else if (key === 'meta:action') {
+				action = value as string;
+			} else if (key === 'meta:planId') {
+				planId = value as string;
+			}
+		}
+
+		if (songs.length === 0) return;
+
+		const { subject, emailTemplate } = formatEmail(songs, planId, action);
+
+		await fetch('https://api.resend.com/emails', {
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.env.RESEND_API_KEY}`,
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({
+				from: 'onboarding@resend.dev',
+				to: 'vkscoma@gmail.com',
+				subject,
+				html: emailTemplate,
+			}),
+		});
+
+		// Clear all stored data after sending so the DO is clean for next time
+		await this.ctx.storage.deleteAll();
+	}
 }
 
 async function verifySignature(request: Request, secret: string): Promise<{ valid: boolean; body: string }> {
@@ -133,7 +204,7 @@ function formatEmail(songs: PlanItem[], planId: string, action: string): { subje
                       Best,<br />Planning Center Notifier
                     </p>
                     <hr
-                      style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:rgb(204,204,204);margin-bottom:20px;margin-top:20px" />                
+                      style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:rgb(204,204,204);margin-bottom:20px;margin-top:20px" />
                   </td>
                 </tr>
               </tbody>
@@ -170,31 +241,20 @@ export default {
 		const item = innerPayload.data;
 		const planId = item?.relationships?.plan?.data?.id ?? '';
 
-		const songs = item && item.attributes.item_type === 'song' ? [item] : [];
-
-		if (songs.length === 0) {
+		// Ignore non-song items
+		if (!item || item.attributes.item_type !== 'song') {
 			return new Response('OK', { status: 200 });
 		}
 
 		const action = outer.data[0]?.attributes?.name?.includes('updated') ? 'updated' : 'created';
-		const { subject, emailTemplate } = formatEmail(songs, planId, action);
 
-		const resendResponse = await fetch('https://api.resend.com/emails', {
-			method: 'POST',
-			headers: {
-				Authorization: `Bearer ${env.RESEND_API_KEY}`,
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({
-				from: 'onboarding@resend.dev',
-				to: 'vkscoma@gmail.com',
-				subject,
-				html: emailTemplate,
-			}),
-		});
+		// Route to the Durable Object instance for this specific plan+action pair.
+		// All song events for the same plan+action share one DO instance,
+		// so they accumulate together before the single email is sent.
+		const doId = env.PLAN_NOTIFIER.idFromName(`${planId}-${action}`);
+		const stub = env.PLAN_NOTIFIER.get(doId);
 
-		const _resendData = await resendResponse.json();
-		//console.log('Resend response:', JSON.stringify(_resendData));
+		await stub.addSong(item, action, planId);
 
 		return new Response('OK', { status: 200 });
 	},
