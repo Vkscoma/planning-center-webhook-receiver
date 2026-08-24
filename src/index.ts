@@ -4,6 +4,9 @@ export interface Env {
 	RESEND_API_KEY: string;
 	PCO_WEBHOOK_SECRET_CREATE: string;
 	PCO_WEBHOOK_SECRET_UPDATE: string;
+	NOTIFY_TO: string;
+	NOTIFY_FROM: string;
+	NOTIFY_NAME: string;
 	PLAN_NOTIFIER: DurableObjectNamespace<PlanNotifier>;
 }
 
@@ -88,21 +91,24 @@ export class PlanNotifier extends DurableObject<Env> {
 
 		if (songs.length === 0) return;
 
-		const { subject, emailTemplate } = formatEmail(songs, planId, action);
+		const { subject, emailTemplate } = formatEmail(songs, planId, action, this.env.NOTIFY_NAME);
 
-		await fetch('https://api.resend.com/emails', {
+		const res = await fetch('https://api.resend.com/emails', {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${this.env.RESEND_API_KEY}`,
 				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify({
-				from: 'onboarding@resend.dev',
-				to: 'vkscoma@gmail.com',
+				from: this.env.NOTIFY_FROM,
+				to: this.env.NOTIFY_TO,
 				subject,
 				html: emailTemplate,
 			}),
 		});
+		if (!res.ok) {
+			console.error(`Resend API error ${res.status}: ${await res.text()}`);
+		}
 
 		// Clear all stored data after sending so the DO is clean for next time
 		await this.ctx.storage.deleteAll();
@@ -124,7 +130,7 @@ async function verifySignature(request: Request, secret: string): Promise<{ vali
 	return { valid: digest === signature, body };
 }
 
-function formatEmail(songs: PlanItem[], planId: string, action: string): { subject: string; emailTemplate: string } {
+function formatEmail(songs: PlanItem[], planId: string, action: string, name: string): { subject: string; emailTemplate: string } {
 	const verb = action === 'updated' ? 'updated in' : 'added to';
 	const songList = songs.map((s) => `<li>${s.attributes.title}</li>`).join('');
 
@@ -164,7 +170,7 @@ function formatEmail(songs: PlanItem[], planId: string, action: string): { subje
                     <p
                       style="font-size:16px;line-height:26px;margin-top:16px;margin-bottom:16px">
                       Hi
-                      <!-- -->Vincent<!-- -->,
+                      <!-- -->${name}<!-- -->,
                     </p>
                     <p
                       style="font-size:16px;line-height:26px;margin-top:16px;margin-bottom:16px">

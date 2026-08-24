@@ -1,0 +1,6 @@
+RESEND_API_KEY=re_xxxxxxxxxx
+PCO_WEBHOOK_SECRET_CREATE=
+PCO_WEBHOOK_SECRET_UPDATE=
+NOTIFY_TO=you@example.com
+NOTIFY_FROM=onboarding@resend.dev
+NOTIFY_NAME=there

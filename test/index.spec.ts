@@ -1,24 +1,92 @@
-import { env, createExecutionContext, waitOnExecutionContext, SELF } from 'cloudflare:test';
+import { env, createExecutionContext, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import worker from '../src/index';
 
-// For now, you'll need to do something like this to get a correctly-typed
-// `Request` to pass to `worker.fetch()`.
-const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
-
-describe('Hello World worker', () => {
-	it('responds with Hello World! (unit style)', async () => {
-		const request = new IncomingRequest('http://example.com');
-		// Create an empty context to pass to `worker.fetch()`.
+describe('Planning Center Webhook Receiver', () => {
+	it('responds with 404 on GET', async () => {
+		const request = new Request('http://example.com', { method: 'GET' });
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
 		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+		expect(await response.text()).toBe('Not found');
+		expect(await response.status).toBe(404);
 	});
 
-	it('responds with Hello World! (integration style)', async () => {
-		const response = await SELF.fetch('https://example.com');
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
+	it('responds with 401 on POST with bad signature', async () => {
+		const request = new Request('http://example.com', {
+			method: 'POST',
+			body: JSON.stringify({ data: [] }),
+			headers: { 'Content-Type': 'application/json' },
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+		expect(await response.status).toBe(401);
+	});
+
+	it('responds with 200 on POST with valid HMAC signature over a PCO envelope', async () => {
+		const secret = 'test-secret-key';
+
+		// Build the realistic PCO envelope (double-encoded payload)
+		const envelope = {
+			data: [{
+				id: '1',
+				type: 'WebhookEvent',
+				attributes: {
+					name: 'services.v2.events.plan_item.created',
+					attempt: 1,
+					payload: JSON.stringify({
+						data: {
+							type: 'PlanItem',
+							attributes: {
+								title: 'Way Maker',
+								item_type: 'song',
+								key_name: 'G',
+							},
+							relationships: {
+								plan: {
+									data: {
+										id: '123456',
+									},
+								},
+							},
+						},
+					}),
+				},
+			}],
+		};
+		const payload = JSON.stringify(envelope);
+
+		// Compute HMAC-SHA256 signature using the Web Crypto API
+		const encoder = new TextEncoder();
+		const key = await globalThis.crypto.subtle.importKey(
+			'raw',
+			encoder.encode(secret),
+			{ name: 'HMAC', hash: 'SHA-256' },
+			false,
+			['sign']
+		);
+		const signatureBuffer = await globalThis.crypto.subtle.sign(
+			'HMAC',
+			key,
+			encoder.encode(payload)
+		);
+		const signature = Array.from(new Uint8Array(signatureBuffer))
+			.map((b) => b.toString(16).padStart(2, '0'))
+			.join('');
+
+		const request = new Request('http://example.com', {
+			method: 'POST',
+			body: new Blob([payload]),
+			headers: {
+				'Content-Type': 'application/json',
+				'X-PCO-Webhooks-Authenticity': signature,
+			},
+		});
+
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+		expect(await response.status).toBe(200);
 	});
 });
