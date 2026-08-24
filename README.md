@@ -23,7 +23,7 @@ Planning Center event
 
 - [Node.js](https://nodejs.org) version 20+ (wrangler 4 requirement)
 - A [Cloudflare](https://cloudflare.com) account
-- A [Resend](https://resend.com) account with a **verified sending domain**
+- A [Resend](https://resend.com) account. A **verified sending domain** is required to email any address other than your own Resend account address — see the trap below.
 - Access to Planning Center
 
 > **Resend domain trap**: `onboarding@resend.dev` only delivers email to the address on your Resend account itself. If you use it as `NOTIFY_FROM` without a verified domain, the Resend API will return `403` silently and you'll receive no email. Use a domain verified in Resend, or use `onboarding@resend.dev` only for testing.
@@ -44,7 +44,7 @@ npm install
 npx wrangler login
 ```
 
-### 3. Configure environment variables
+### 3. Configure the sender
 
 `NOTIFY_FROM` and `NOTIFY_NAME` ship as plain vars in `wrangler.jsonc` — edit them there:
 
@@ -55,16 +55,9 @@ npx wrangler login
 }
 ```
 
-`NOTIFY_TO` is your personal address, so it is **not** in `wrangler.jsonc`. Set it as a secret along with your Resend API key:
+### 4. Deploy
 
-```bash
-npx wrangler secret put NOTIFY_TO
-npx wrangler secret put RESEND_API_KEY
-```
-
-> **Why `NOTIFY_TO` is secret-only**: Cloudflare rejects a secret whose name collides with a plain-text var (API error `10053`). A name can be a var *or* a secret, never both — so a committed placeholder cannot be "overridden" by a secret later. Keeping `NOTIFY_TO` out of `vars` is what makes `wrangler secret put NOTIFY_TO` possible.
-
-Deploy and note the URL:
+Deploy **before** setting any secrets — `wrangler secret put` targets a Worker that already exists.
 
 ```bash
 npx wrangler deploy
@@ -75,7 +68,22 @@ Your Worker will be live at:
 https://pc-notifier.<your-subdomain>.workers.dev
 ```
 
-### 4. Create Planning Center webhooks
+Note that URL — step 6 needs it.
+
+### 5. Set your secrets
+
+`NOTIFY_TO` is your personal address, so it is **not** in `wrangler.jsonc`. Set it as a secret along with your Resend API key:
+
+```bash
+npx wrangler secret put NOTIFY_TO
+npx wrangler secret put RESEND_API_KEY
+```
+
+> **Why `NOTIFY_TO` is secret-only**: Cloudflare rejects a secret whose name collides with a plain-text var (API error `10053`). A name can be a var *or* a secret, never both — so a committed placeholder cannot be "overridden" by a secret later. Keeping `NOTIFY_TO` out of `vars` is what makes `wrangler secret put NOTIFY_TO` possible.
+
+> **Ran this before deploying?** Wrangler asks *"There doesn't seem to be a Worker called `pc-notifier`. Do you want to create a new Worker with that name and add secrets to it?"* and creates a stub. In a non-interactive shell or CI it just fails. Deploying first avoids both.
+
+### 6. Create Planning Center webhooks
 
 1. Go to [api.planningcenteronline.com/webhooks](https://api.planningcenteronline.com/webhooks)
 2. Click **"Add a new subscription URL"**
@@ -92,19 +100,21 @@ npx wrangler secret put PCO_WEBHOOK_SECRET_UPDATE
 
 **Secrets take effect immediately** — no redeploy is needed after setting them.
 
-### 5. Verify it works
+### 7. Verify it works
 
-Send a test webhook using the included helper:
-
-```bash
-node scripts/send-test-webhook.mjs <secret> https://pc-notifier.<your-subdomain>.workers.dev
-```
-
-Or run the test suite:
+Send a signed test webhook to your deployed Worker. The helper sends a `plan_item.created` event, so pass the **create** secret:
 
 ```bash
-npm test
+node scripts/send-test-webhook.mjs '<your-create-secret>' https://pc-notifier.<your-subdomain>.workers.dev
 ```
+
+Paste the same secret Planning Center showed you for the `plan_item.created` subscription. Quote it — PCO secrets can contain shell metacharacters.
+
+You should see `Response status: 200`. Wait ~30 seconds for the debounce alarm, then check your inbox for a "1 song added to your plan" email listing "Way Maker". Watch it happen live with `npx wrangler tail` in a second terminal.
+
+If the request returns `401`, the secret you passed doesn't match `PCO_WEBHOOK_SECRET_CREATE` on the Worker. If it returns `200` but no email arrives, run `npx wrangler tail` and re-send — a `Resend API error` line will name the cause.
+
+> `npm test` runs the local unit suite. It passes even when your deployment is entirely misconfigured, so it is **not** a substitute for the test webhook above.
 
 ## Configuration
 
@@ -145,15 +155,25 @@ planning-center-webhook-receiver/
 
 ## Local Development
 
+`wrangler dev` does not read the secrets you set with `wrangler secret put` — those live only on the deployed Worker. Local runs read `.dev.vars` instead, so create it first:
+
+```bash
+cp .dev.vars.example .dev.vars
+```
+
+Then fill in your real `RESEND_API_KEY`, both PCO webhook secrets, and `NOTIFY_TO`. The file is gitignored; never commit it.
+
 ```bash
 npm run dev
 ```
 
-This starts a local dev server at `http://localhost:8787`. The test webhook script can target this URL:
+This starts a local dev server at `http://localhost:8787`. Point the test webhook script at it, passing the same value you put in `.dev.vars` for `PCO_WEBHOOK_SECRET_CREATE`:
 
 ```bash
-node scripts/send-test-webhook.mjs <secret> http://localhost:8787
+node scripts/send-test-webhook.mjs '<your-create-secret>' http://localhost:8787
 ```
+
+> **Every local request returning `401`?** You almost certainly skipped `.dev.vars`. With no secret bound, the Worker computes its HMAC over the literal string `"undefined"`, which never matches a real signature.
 
 ## Debugging
 
@@ -188,15 +208,16 @@ The tests exercise the real signature-verification path — nothing is stubbed o
 
 ## Setup Order at a Glance
 
-The order matters: the Worker must exist before `wrangler secret put` can target it, and Planning Center only shows you a webhook secret after you give it a live URL.
+The order matters in two places: the Worker must exist before `wrangler secret put` can target it, and Planning Center only shows you a webhook secret after you give it a live URL.
 
 1. `git clone` → `cd` → `npm install`
 2. `npx wrangler login`
 3. Set `NOTIFY_FROM` / `NOTIFY_NAME` in `wrangler.jsonc`
-4. `npx wrangler secret put NOTIFY_TO` and `npx wrangler secret put RESEND_API_KEY`
-5. `npx wrangler deploy` → note the returned `https://pc-notifier.<subdomain>.workers.dev` URL
+4. `npx wrangler deploy` → note the returned `https://pc-notifier.<subdomain>.workers.dev` URL
+5. `npx wrangler secret put NOTIFY_TO` and `npx wrangler secret put RESEND_API_KEY`
 6. Create the two Planning Center subscriptions (`plan_item.created`, `plan_item.updated`) pointing at that URL; copy the secret PCO shows for each
 7. `npx wrangler secret put PCO_WEBHOOK_SECRET_CREATE` and `..._UPDATE`
-8. **Done** — secrets take effect immediately, no redeploy needed
+8. Send a test webhook ([step 7](#7-verify-it-works)) and confirm the email arrives
+9. **Done** — secrets take effect immediately, no redeploy needed
 
-Local development (`\.dev.vars` + `npm run dev` + the test script) belongs in its own section *after* the deploy path, not interleaved with it.
+Local development is a separate path: see [Local Development](#local-development) for the `.dev.vars` setup that `wrangler dev` needs.
