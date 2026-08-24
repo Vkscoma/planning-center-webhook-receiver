@@ -1,6 +1,11 @@
 RESEND_API_KEY=re_xxxxxxxxxx
 PCO_WEBHOOK_SECRET_CREATE=
 PCO_WEBHOOK_SECRET_UPDATE=
+# NOTIFY_TO is a secret in production (not in wrangler.jsonc), so it must be set
+# here for local dev too. Without it, wrangler dev falls back to nothing and
+# Resend rejects the send.
 NOTIFY_TO=you@example.com
-NOTIFY_FROM=onboarding@resend.dev
-NOTIFY_NAME=there
+# NOTIFY_FROM and NOTIFY_NAME come from the "vars" block in wrangler.jsonc.
+# Uncomment to override them locally only.
+# NOTIFY_FROM=onboarding@resend.dev
+# NOTIFY_NAME=there

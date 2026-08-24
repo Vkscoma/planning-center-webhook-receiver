@@ -46,21 +46,23 @@ npx wrangler login
 
 ### 3. Configure environment variables
 
-Set the notification variables in `wrangler.jsonc` (placeholder values are committed — override with secrets at runtime):
+`NOTIFY_FROM` and `NOTIFY_NAME` ship as plain vars in `wrangler.jsonc` — edit them there:
 
 ```jsonc
 "vars": {
-	"NOTIFY_TO": "you@example.com",
 	"NOTIFY_FROM": "onboarding@resend.dev",
 	"NOTIFY_NAME": "there"
 }
 ```
 
-Set your Resend API key as a secret:
+`NOTIFY_TO` is your personal address, so it is **not** in `wrangler.jsonc`. Set it as a secret along with your Resend API key:
 
 ```bash
+npx wrangler secret put NOTIFY_TO
 npx wrangler secret put RESEND_API_KEY
 ```
+
+> **Why `NOTIFY_TO` is secret-only**: Cloudflare rejects a secret whose name collides with a plain-text var (API error `10053`). A name can be a var *or* a secret, never both — so a committed placeholder cannot be "overridden" by a secret later. Keeping `NOTIFY_TO` out of `vars` is what makes `wrangler secret put NOTIFY_TO` possible.
 
 Deploy and note the URL:
 
@@ -88,7 +90,7 @@ npx wrangler secret put PCO_WEBHOOK_SECRET_CREATE
 npx wrangler secret put PCO_WEBHOOK_SECRET_UPDATE
 ```
 
-**Secrets take effect immediately** — no redeploy is needed after step 7.
+**Secrets take effect immediately** — no redeploy is needed after setting them.
 
 ### 5. Verify it works
 
@@ -106,22 +108,23 @@ npm test
 
 ## Configuration
 
-| Variable | Type | Description | Overridden by |
+| Variable | Type | Description | Where to set it |
 |---|---|---|---|
-| `NOTIFY_TO` | string | Recipient email address | `wrangler secret put NOTIFY_TO` |
-| `NOTIFY_FROM` | string | Sender email (must be on a Resend-verified domain) | `wrangler secret put NOTIFY_FROM` |
-| `NOTIFY_NAME` | string | Greeting name in email body | `wrangler secret put NOTIFY_NAME` |
-| `RESEND_API_KEY` | string | Resend API key | `wrangler secret put RESEND_API_KEY` |
-| `PCO_WEBHOOK_SECRET_CREATE` | string | HMAC signature secret for `created` events | `wrangler secret put PCO_WEBHOOK_SECRET_CREATE` |
-| `PCO_WEBHOOK_SECRET_UPDATE` | string | HMAC signature secret for `updated` events | `wrangler secret put PCO_WEBHOOK_SECRET_UPDATE` |
+| `NOTIFY_TO` | secret | Recipient email address | `wrangler secret put NOTIFY_TO` |
+| `NOTIFY_FROM` | var | Sender email (must be on a Resend-verified domain) | `vars` in `wrangler.jsonc` |
+| `NOTIFY_NAME` | var | Greeting name in email body | `vars` in `wrangler.jsonc` |
+| `RESEND_API_KEY` | secret | Resend API key | `wrangler secret put RESEND_API_KEY` |
+| `PCO_WEBHOOK_SECRET_CREATE` | secret | HMAC signature secret for `created` events | `wrangler secret put PCO_WEBHOOK_SECRET_CREATE` |
+| `PCO_WEBHOOK_SECRET_UPDATE` | secret | HMAC signature secret for `updated` events | `wrangler secret put PCO_WEBHOOK_SECRET_UPDATE` |
 
-**Secret override note**: Values in `wrangler.jsonc`'s `vars` block are public since the repo is open. At runtime, `wrangler secret put` secrets of the same name take precedence over `vars`.
+**A name is either a var or a secret, never both.** Cloudflare returns error `10053` if you try to `wrangler secret put` a name already declared in `vars`. To convert a var into a secret, remove it from `wrangler.jsonc`, run `npx wrangler deploy` to release the binding, then run `wrangler secret put`.
+
+Values in the `vars` block are public since the repo is open — never put a personal address or key there.
 
 ## Project Structure
 
 ```
 planning-center-webhook-receiver/
-├── .github/                # GitHub workflows (if any)
 ├── .gitignore
 ├── .prettierrc
 ├── .editorconfig
@@ -130,10 +133,9 @@ planning-center-webhook-receiver/
 ├── worker-configuration.d.ts   # Generated TypeScript types
 ├── package.json
 ├── tsconfig.json
-├── vitest.config.mts           # Vitest + Cloudflare Workers pool config
+├── vitest.config.mts           # Vitest config + test-only secret bindings
 ├── src/
-│   ├── index.ts              # All Worker logic
-│   └── testScript.mjs        # Local test script for wrangler dev
+│   └── index.ts              # All Worker logic
 ├── scripts/
 │   └── send-test-webhook.mjs # Node script to sign & POST test webhooks
 ├── .dev.vars                 # Local secrets (never commit — gitignored)
@@ -175,9 +177,7 @@ Run tests:
 npm test
 ```
 
-Previously, the suite was a failing "Hello World" template. It has been rewritten with real integration tests that exercise the full webhook pipeline.
-
-**No more commenting out signature verification** — the tests validate correct behavior.
+The tests exercise the real signature-verification path — nothing is stubbed out. The HMAC secrets the tests sign with are bound in `vitest.config.mts` under `poolOptions.workers.miniflare.bindings`, because they are secrets in production and therefore absent from `wrangler.jsonc`. Without those bindings the worker hashes the string `"undefined"` and every request 401s.
 
 ## Cost
 
@@ -186,14 +186,14 @@ Previously, the suite was a failing "Hello World" template. It has been rewritte
 - **SQLite-backed Durable Objects** are available on the Workers Free plan (since April 2025). This project uses `new_sqlite_classes`, so **no paid plan is required**.
 - **Durable Object write limit**: 100k rows written per day. Each `setAlarm()` counts as one row write. With a 30-second debounce, even high-volume plans stay comfortably under this limit.
 
-## Correct Setup Order
+## Setup Order at a Glance
 
-The previous README was circular — step 2 asked for PCO secrets that step 5 hadn't generated yet, and `wrangler secret put` was run against a Worker that didn't exist yet. The correct order is:
+The order matters: the Worker must exist before `wrangler secret put` can target it, and Planning Center only shows you a webhook secret after you give it a live URL.
 
 1. `git clone` → `cd` → `npm install`
 2. `npx wrangler login`
-3. Set `NOTIFY_TO` / `NOTIFY_FROM` / `NOTIFY_NAME` in `wrangler.jsonc`
-4. `npx wrangler secret put RESEND_API_KEY`
+3. Set `NOTIFY_FROM` / `NOTIFY_NAME` in `wrangler.jsonc`
+4. `npx wrangler secret put NOTIFY_TO` and `npx wrangler secret put RESEND_API_KEY`
 5. `npx wrangler deploy` → note the returned `https://pc-notifier.<subdomain>.workers.dev` URL
 6. Create the two Planning Center subscriptions (`plan_item.created`, `plan_item.updated`) pointing at that URL; copy the secret PCO shows for each
 7. `npx wrangler secret put PCO_WEBHOOK_SECRET_CREATE` and `..._UPDATE`

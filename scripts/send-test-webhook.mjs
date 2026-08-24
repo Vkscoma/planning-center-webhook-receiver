@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { createHmac } from 'crypto';
-import fetch from 'node:url';
+import { createHmac } from 'node:crypto';
 
 const args = process.argv.slice(2);
 if (args.length < 2) {

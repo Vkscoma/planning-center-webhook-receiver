@@ -130,9 +130,13 @@ async function verifySignature(request: Request, secret: string): Promise<{ vali
 	return { valid: digest === signature, body };
 }
 
+function escapeHtml(value: string): string {
+	return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function formatEmail(songs: PlanItem[], planId: string, action: string, name: string): { subject: string; emailTemplate: string } {
 	const verb = action === 'updated' ? 'updated in' : 'added to';
-	const songList = songs.map((s) => `<li>${s.attributes.title}</li>`).join('');
+	const songList = songs.map((s) => `<li>${escapeHtml(s.attributes.title)}</li>`).join('');
 
 	const subject = `Planning Center Notification: ${songs.length} song${songs.length > 1 ? 's' : ''} ${verb} your plan`;
 
@@ -242,6 +246,12 @@ export default {
 
 		const finalBody = validCreated ? body : body2;
 		const outer: PCOPayload = JSON.parse(finalBody);
+
+		// An authenticated envelope can still carry no events; bail before indexing
+		// so a malformed delivery returns 200 instead of throwing a 500 that PCO retries.
+		if (!outer.data?.[0]) {
+			return new Response('OK', { status: 200 });
+		}
 
 		const innerPayload = JSON.parse(outer.data[0].attributes.payload ?? '{}');
 		const item = innerPayload.data;

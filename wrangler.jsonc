@@ -54,8 +54,11 @@
 	 * https://developers.cloudflare.com/workers/configuration/secrets/
 	 */
 	
+	// NOTIFY_TO is deliberately NOT listed here. Cloudflare rejects a secret whose
+	// name collides with a plain-text var (error 10053), so declaring it as a var
+	// would make `wrangler secret put NOTIFY_TO` impossible. Set it with:
+	//   npx wrangler secret put NOTIFY_TO
 	"vars": {
-		"NOTIFY_TO": "you@example.com",
 		"NOTIFY_FROM": "onboarding@resend.dev",
 		"NOTIFY_NAME": "there"
 	},
